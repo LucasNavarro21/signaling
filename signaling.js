@@ -19,6 +19,8 @@ wss.on('connection', (ws, req) => {
   console.log(`Conectado a sala ${roomCode} (${rooms.get(roomCode).size})`);
 
   ws.on('message', (msg) => {
+    console.log(`📨  Mensaje recibido en sala ${roomCode}:`, msg.toString());
+
     rooms.get(roomCode)?.forEach((client) => {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
         client.send(msg);                // ← se reenvía ahora sí
