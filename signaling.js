@@ -1,5 +1,5 @@
 const express = require('express');
-const { WebSocketServer, WebSocket } = require('ws'); // ← import agregado
+const { WebSocketServer, WebSocket } = require('ws');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -8,28 +8,31 @@ const server = app.listen(PORT, () =>
 );
 
 const wss = new WebSocketServer({ server });
-const rooms = new Map(); // { code: Set<WebSocket> }
+const rooms = new Map();           // { code: Set<WebSocket> }
 
 wss.on('connection', (ws, req) => {
-  const roomCode = req.url?.split('/').pop();
+  const roomCode = req.url.split('/').pop();
   if (!roomCode) return ws.close();
 
   rooms.has(roomCode) || rooms.set(roomCode, new Set());
   rooms.get(roomCode).add(ws);
   console.log(`Conectado a sala ${roomCode} (${rooms.get(roomCode).size})`);
 
-  ws.on('message', (msg) => {
-    console.log(`📨  Mensaje recibido en sala ${roomCode}:`, msg.toString());
+  // ----- CAMBIO AQUÍ -----
+  ws.on('message', (data, isBinary) => {
+    const text = isBinary ? data : data.toString();      // fuerza a string
+    console.log(`📨  Mensaje recibido en ${roomCode}:`, text);
 
-    rooms.get(roomCode)?.forEach((client) => {
+    rooms.get(roomCode).forEach((client) => {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(msg);                // ← se reenvía ahora sí
+        client.send(text);                               // reenvía como texto
       }
     });
   });
+  // -----------------------
 
   ws.on('close', () => {
-    rooms.get(roomCode)?.delete(ws);
-    if (rooms.get(roomCode)?.size === 0) rooms.delete(roomCode);
+    rooms.get(roomCode).delete(ws);
+    if (rooms.get(roomCode).size === 0) rooms.delete(roomCode);
   });
 });
