@@ -1,38 +1,69 @@
-const express = require('express');
-const { WebSocketServer, WebSocket } = require('ws');
-const app = express();
-const PORT = process.env.PORT || 3000;
+const WebSocket = require('ws');
 
-const server = app.listen(PORT, () =>
-  console.log(`Servidor corriendo en puerto ${PORT}`)
-);
+const wss = new WebSocket.Server({ port: 8080 });
 
-const wss = new WebSocketServer({ server });
-const rooms = new Map();           // { code: Set<WebSocket> }
+const rooms = {}; // { roomCode: [ { uid, nickname, ws } ] }
 
-wss.on('connection', (ws, req) => {
-  const roomCode = req.url.split('/').pop();
-  if (!roomCode) return ws.close();
+wss.on('connection', function connection(ws, req) {
+  let currentRoom = null;
+  let currentUid = null;
 
-  rooms.has(roomCode) || rooms.set(roomCode, new Set());
-  rooms.get(roomCode).add(ws);
-  console.log(`Conectado a sala ${roomCode} (${rooms.get(roomCode).size})`);
+  ws.on('message', function incoming(message) {
+    const data = JSON.parse(message);
 
-  // ----- CAMBIO AQUÍ -----
-  ws.on('message', (data, isBinary) => {
-    const text = isBinary ? data : data.toString();      // fuerza a string
-    console.log(`📨  Mensaje recibido en ${roomCode}:`, text);
+    if (data.type === 'join') {
+      const { uid, nickname, room } = data;
+      currentUid = uid;
+      currentRoom = room;
 
-    rooms.get(roomCode).forEach((client) => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(text);                               // reenvía como texto
+      // Crear la sala si no existe
+      if (!rooms[room]) {
+        rooms[room] = [];
       }
-    });
+
+      // Agregar peer a la sala (evitar duplicados)
+      const alreadyExists = rooms[room].some(p => p.uid === uid);
+      if (!alreadyExists) {
+        rooms[room].push({ uid, nickname, ws });
+      }
+
+      console.log(`📨  Mensaje recibido en ${room}:`, data);
+
+      // Enviar lista de peers actualizada a todos en la sala
+      broadcastPeers(room);
+    }
+
+    // (Acá podrías manejar más tipos de mensaje si querés)
   });
-  // -----------------------
 
   ws.on('close', () => {
-    rooms.get(roomCode).delete(ws);
-    if (rooms.get(roomCode).size === 0) rooms.delete(roomCode);
+    if (currentRoom && currentUid) {
+      rooms[currentRoom] = rooms[currentRoom].filter(p => p.uid !== currentUid);
+      broadcastPeers(currentRoom);
+    }
   });
 });
+
+function broadcastPeers(room) {
+  const peers = rooms[room] || [];
+
+  const peerList = peers.map(p => ({
+    uid: p.uid,
+    nickname: p.nickname
+  }));
+
+  const message = JSON.stringify({
+    type: 'peers',
+    peers: peerList
+  });
+
+  peers.forEach(p => {
+    try {
+      p.ws.send(message);
+    } catch (e) {
+      console.error(`❌ Error al enviar a ${p.uid}:`, e);
+    }
+  });
+
+  console.log(`📡 Enviando peers en ${room}:`, peerList);
+}
