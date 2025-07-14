@@ -16,24 +16,38 @@ wss.on('connection', function connection(ws, req) {
       currentUid = uid;
       currentRoom = room;
 
-      // Crear la sala si no existe
       if (!rooms[room]) {
         rooms[room] = [];
       }
 
-      // Agregar peer a la sala (evitar duplicados)
       const alreadyExists = rooms[room].some(p => p.uid === uid);
       if (!alreadyExists) {
         rooms[room].push({ uid, nickname, ws });
       }
 
       console.log(`📨  Mensaje recibido en ${room}:`, data);
-
-      // Enviar lista de peers actualizada a todos en la sala
       broadcastPeers(room);
     }
 
-    // (Acá podrías manejar más tipos de mensaje si querés)
+    if (data.type === 'file-offer') {
+      const { to } = data;
+
+      console.log(`📦 Oferta de archivo recibida para ${to}`);
+
+      const roomPeers = rooms[currentRoom] || [];
+      const recipient = roomPeers.find(p => p.uid === to);
+
+      if (recipient) {
+        try {
+          recipient.ws.send(JSON.stringify(data));
+          console.log(`📤 Oferta enviada a ${to}`);
+        } catch (e) {
+          console.error(`❌ Error al reenviar archivo a ${to}:`, e);
+        }
+      } else {
+        console.log(`⚠️ No se encontró peer con UID ${to}`);
+      }
+    }
   });
 
   ws.on('close', () => {
