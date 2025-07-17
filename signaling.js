@@ -11,39 +11,37 @@ wss.on('connection', function connection(ws, req) {
   ws.on('message', function incoming(message) {
     const data = JSON.parse(message);
 
-    // --- CREAR SALA ---
-    if (data.type === 'create_room') {
-      const { room } = data;
+    if (data.type === 'create') {
+      const { uid, nickname, room } = data;
+      currentUid = uid;
+      currentRoom = room;
 
       if (!rooms[room]) {
         rooms[room] = [];
-        ws.send(JSON.stringify({
-          type: 'create_room_response',
-          success: true
-        }));
-        console.log(`✅ Sala creada: ${room}`);
+        rooms[room].push({ uid, nickname, ws });
+        console.log(`✅ Sala ${room} creada por ${nickname}`);
+        broadcastPeers(room);
       } else {
+        // Si alguien intenta crear una sala que ya existe, enviamos error
         ws.send(JSON.stringify({
-          type: 'create_room_response',
-          success: false,
-          message: 'La sala ya existe'
+          type: 'error',
+          message: `La sala ${room} ya existe`
         }));
-        console.log(`⚠️ La sala ya existía: ${room}`);
+        console.log(`⛔ Sala ${room} ya existe. No se puede crear de nuevo.`);
       }
-      return;
     }
 
-    // --- UNIRSE A SALA ---
     if (data.type === 'join') {
       const { uid, nickname, room } = data;
       currentUid = uid;
       currentRoom = room;
 
       if (!rooms[room]) {
+        // Error: sala no existe
+        console.log(`⛔ Sala ${room} no existe. No se puede unir.`);
         ws.send(JSON.stringify({
-          type: 'join_response',
-          success: false,
-          message: 'Código de sala inválido'
+          type: 'error',
+          message: 'La sala no existe'
         }));
         return;
       }
@@ -51,20 +49,16 @@ wss.on('connection', function connection(ws, req) {
       const alreadyExists = rooms[room].some(p => p.uid === uid);
       if (!alreadyExists) {
         rooms[room].push({ uid, nickname, ws });
+        console.log(`✅ ${nickname} se unió a la sala ${room}`);
       }
 
-      ws.send(JSON.stringify({
-        type: 'join_response',
-        success: true
-      }));
-      console.log(`📨 Usuario ${uid} se unió a sala ${room}`);
       broadcastPeers(room);
-      return;
     }
 
-    // --- OFERTA DE ARCHIVO ---
     if (data.type === 'file-offer') {
       const { to } = data;
+
+      console.log(`📦 Oferta de archivo recibida para ${to}`);
 
       const roomPeers = rooms[currentRoom] || [];
       const recipient = roomPeers.find(p => p.uid === to);
@@ -83,14 +77,13 @@ wss.on('connection', function connection(ws, req) {
   });
 
   ws.on('close', () => {
-    if (currentRoom && currentUid && rooms[currentRoom]) {
+    if (currentRoom && currentUid) {
       rooms[currentRoom] = rooms[currentRoom].filter(p => p.uid !== currentUid);
       broadcastPeers(currentRoom);
     }
   });
 });
 
-// --- BROADCAST PEERS ---
 function broadcastPeers(room) {
   const peers = rooms[room] || [];
 
