@@ -10,6 +10,14 @@ wss.on('connection', function connection(ws, req) {
 
   ws.on('message', function incoming(message) {
     const data = JSON.parse(message);
+    //Validar sala
+      if (data.type === 'validate') {
+      const exists = !!rooms[data.roomCode];
+      ws.send(JSON.stringify({
+        type: 'validation_result',
+        exists: exists,
+      }));
+    }
 
     if (data.type === 'create') {
       const { uid, nickname, room } = data;
